@@ -1,4 +1,4 @@
-package insecure
+package insecure-save
 
 const (
 	Key = `-----BEGIN RSA PRIVATE KEY-----

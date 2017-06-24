@@ -10,16 +10,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/philips/grpc-gateway-example/pkg/ui/data/swagger"
-
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/philips/go-bindata-assetfs"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	pb "github.com/philips/grpc-gateway-example/echopb"
+	pb "echopb"
 )
 
 // serveCmd represents the serve command
@@ -50,27 +47,12 @@ func newServer() *myService {
 // connections or otherHandler otherwise. Copied from cockroachdb.
 func grpcHandlerFunc(grpcServer *grpc.Server, otherHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO(tamird): point to merged gRPC code rather than a PR.
-		// This is a partial recreation of gRPC's internal checks https://github.com/grpc/grpc-go/pull/514/files#diff-95e9a25b738459a2d3030e1e6fa2a718R61
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
 			grpcServer.ServeHTTP(w, r)
 		} else {
 			otherHandler.ServeHTTP(w, r)
 		}
 	})
-}
-
-func serveSwagger(mux *http.ServeMux) {
-	mime.AddExtensionType(".svg", "image/svg+xml")
-
-	// Expose files in third_party/swagger-ui/ on <host>/swagger-ui
-	fileServer := http.FileServer(&assetfs.AssetFS{
-		Asset:    swagger.Asset,
-		AssetDir: swagger.AssetDir,
-		Prefix:   "third_party/swagger-ui",
-	})
-	prefix := "/swagger-ui/"
-	mux.Handle(prefix, http.StripPrefix(prefix, fileServer))
 }
 
 func serve() {
@@ -88,9 +70,6 @@ func serve() {
 	dopts := []grpc.DialOption{grpc.WithTransportCredentials(dcreds)}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/swagger.json", func(w http.ResponseWriter, req *http.Request) {
-		io.Copy(w, strings.NewReader(pb.Swagger))
-	})
 
 	gwmux := runtime.NewServeMux()
 	err := pb.RegisterEchoServiceHandlerFromEndpoint(ctx, gwmux, demoAddr, dopts)
@@ -100,7 +79,6 @@ func serve() {
 	}
 
 	mux.Handle("/", gwmux)
-	serveSwagger(mux)
 
 	conn, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -109,7 +87,7 @@ func serve() {
 
 	srv := &http.Server{
 		Addr:    demoAddr,
-		Handler: grpcHandlerFunc(grpcServer, mux),
+		Handler: grpcHandlerFunc(grpcServer, gwmux),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*demoKeyPair},
 			NextProtos:   []string{"h2"},
